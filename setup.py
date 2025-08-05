@@ -24,6 +24,8 @@ from setuptools import setup, find_packages
 import torch
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
 
+# Флаги для отслеживания поддерживаемых архитектур
+HAS_SM75 = False
 HAS_SM80 = False
 HAS_SM86 = False
 HAS_SM89 = False
@@ -57,7 +59,7 @@ if CUDA_HOME is None:
 def get_nvcc_cuda_version(cuda_dir: str) -> Version:
     """Get the CUDA version from nvcc.
 
-    Adapted from https://github.com/NVIDIA/apex/blob/8b7a1ff183741dd8f9b87e7bafd04cfde99cea28/setup.py  
+    Adapted from https://github.com/NVIDIA/apex/blob/8b7a1ff183741dd8f9b87e7bafd04cfde99cea28/setup.py
     """
     nvcc_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"],
                                           universal_newlines=True)
@@ -66,7 +68,7 @@ def get_nvcc_cuda_version(cuda_dir: str) -> Version:
     nvcc_cuda_version = parse(output[release_idx].split(",")[0])
     return nvcc_cuda_version
 
-# Принудительное указание архитектуры для Tesla T4
+# === ИСПРАВЛЕНИЕ: Принудительное указание архитектуры для Tesla T4 ===
 print("Принудительно установлены compute capabilities: {'7.5'}")
 compute_capabilities = {"7.5"}
 
@@ -87,9 +89,13 @@ if nvcc_cuda_version < Version("12.0"):
 #     raise RuntimeError(
 #         "CUDA 12.8 or higher is required for compute capability 12.0.")
 
-# Add target compute capabilities to NVCC flags.
+# === ИСПРАВЛЕНИЕ: Add target compute capabilities to NVCC flags ===
+# Используем if/elif для корректной обработки архитектур
 for capability in compute_capabilities:
-    if capability.startswith("8.0"):
+    if capability.startswith("7.5"):
+        HAS_SM75 = True
+        num = "75"
+    elif capability.startswith("8.0"):
         HAS_SM80 = True
         num = "80"
     elif capability.startswith("8.6"):
@@ -104,19 +110,19 @@ for capability in compute_capabilities:
     elif capability.startswith("12.0"):
         HAS_SM120 = True
         num = "120" # need to use sm120a to use mxfp8/mxfp4/nvfp4 instructions.
-    else:  # Для архитектуры 7.5
-        num = "75"
-        # Устанавливаем флаги для sm_75
-        HAS_SM80 = True # Включаем базовый модуль, который может работать на 7.5
-        
+    else:
+        # Для неизвестных архитектур, преобразуем напрямую
+        print(f"Предупреждение: Неизвестная архитектура {capability}, пробуем использовать напрямую.")
+        num = capability.replace(".", "") # "7.5" -> "75"
+
     NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
-    # Для полной совместимости добавляем PTX только для реальных поддерживаемых архитектур
-    # if capability.endswith("+PTX") or num in ["80", "86", "89", "90a", "120"]:
+    # Опционально: добавить PTX для будущей совместимости
+    # if not capability.endswith("+PTX"):
     #     NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
 
 ext_modules = []
 
-# Fused kernels - работают на sm_75.
+# === ИСПРАВЛЕНИЕ: Fused kernels - работают на sm_75.
 fused_extension = CUDAExtension(
     name="sageattention._fused",
     sources=["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"],
@@ -127,25 +133,22 @@ fused_extension = CUDAExtension(
 )
 ext_modules.append(fused_extension)
 
-# Модуль _qattn_sm80 может частично работать на sm_75, пробуем включить
-# Если будут ошибки компиляции - закомментируйте этот блок
-if HAS_SM80: # Всегда True для 7.5 в нашей конфигурации
-    try:
-        qattn_extension = CUDAExtension(
-            name="sageattention._qattn_sm80",
-            sources=[
-                "csrc/qattn/pybind_sm80.cpp",
-                "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
-            ],
-            extra_compile_args={
-                "cxx": CXX_FLAGS,
-                "nvcc": NVCC_FLAGS,
-            },
-        )
-        ext_modules.append(qattn_extension)
-        print("Добавлен модуль _qattn_sm80 для архитектуры 7.5")
-    except Exception as e:
-        print(f"Не удалось добавить модуль _qattn_sm80: {e}")
+# === ИСПРАВЛЕНИЕ: Модуль _qattn_sm80: пытаемся собрать, он может частично работать на sm_75
+# Всегда добавляем, если compute_capabilities не пуст (т.е. архитектура указана)
+if compute_capabilities:
+    qattn_extension = CUDAExtension(
+        name="sageattention._qattn_sm80",
+        sources=[
+            "csrc/qattn/pybind_sm80.cpp",
+            "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
+        ],
+        extra_compile_args={
+            "cxx": CXX_FLAGS,
+            "nvcc": NVCC_FLAGS,
+        },
+    )
+    ext_modules.append(qattn_extension)
+    print("Добавлен модуль _qattn_sm80")
 
 # Модули для более высоких архитектур отключены для sm_75
 # if HAS_SM89 or HAS_SM120:
@@ -189,14 +192,14 @@ class BuildExtensionSeparateDir(BuildExtension):
         return objects
 
 setup(
-    name='sageattention', 
-    version='2.2.0',  
+    name='sageattention',
+    version='2.2.0',
     author='SageAttention team',
-    license='Apache 2.0 License',  
-    description='Accurate and efficient plug-and-play low-bit attention.',  
-    long_description=open('README.md', encoding='utf-8').read(),  
-    long_description_content_type='text/markdown', 
-    url='https://github.com/thu-ml/SageAttention', 
+    license='Apache 2.0 License',
+    description='Accurate and efficient plug-and-play low-bit attention.',
+    long_description=open('README.md', encoding='utf-8').read(),
+    long_description_content_type='text/markdown',
+    url='https://github.com/sanek1989/SageAttention2.git', # Исправлен URL
     packages=find_packages(),
     python_requires='>=3.9',
     ext_modules=ext_modules,
