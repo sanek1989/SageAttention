@@ -76,15 +76,16 @@ print(f"Detect GPUs with compute capabilities: {compute_capabilities}")
 # Validate the NVCC CUDA version.
 if nvcc_cuda_version < Version("12.0"):
     raise RuntimeError("CUDA 12.0 or higher is required to build the package.")
-if nvcc_cuda_version < Version("12.4") and any(cc.startswith("8.9") for cc in compute_capabilities):
-    raise RuntimeError(
-        "CUDA 12.4 or higher is required for compute capability 8.9.")
-if nvcc_cuda_version < Version("12.3") and any(cc.startswith("9.0") for cc in compute_capabilities):
-    raise RuntimeError(
-        "CUDA 12.3 or higher is required for compute capability 9.0.")
-if nvcc_cuda_version < Version("12.8") and any(cc.startswith("12.0") for cc in compute_capabilities):
-    raise RuntimeError(
-        "CUDA 12.8 or higher is required for compute capability 12.0.")
+# Закомментированы проверки для более высоких архитектур, так как используем 7.5
+# if nvcc_cuda_version < Version("12.4") and any(cc.startswith("8.9") for cc in compute_capabilities):
+#     raise RuntimeError(
+#         "CUDA 12.4 or higher is required for compute capability 8.9.")
+# if nvcc_cuda_version < Version("12.3") and any(cc.startswith("9.0") for cc in compute_capabilities):
+#     raise RuntimeError(
+#         "CUDA 12.3 or higher is required for compute capability 9.0.")
+# if nvcc_cuda_version < Version("12.8") and any(cc.startswith("12.0") for cc in compute_capabilities):
+#     raise RuntimeError(
+#         "CUDA 12.8 or higher is required for compute capability 12.0.")
 
 # Add target compute capabilities to NVCC flags.
 for capability in compute_capabilities:
@@ -105,63 +106,17 @@ for capability in compute_capabilities:
         num = "120" # need to use sm120a to use mxfp8/mxfp4/nvfp4 instructions.
     else:  # Для архитектуры 7.5
         num = "75"
+        # Устанавливаем флаги для sm_75
+        HAS_SM80 = True # Включаем базовый модуль, который может работать на 7.5
+        
     NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
-    if capability.endswith("+PTX"):
-        NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
+    # Для полной совместимости добавляем PTX только для реальных поддерживаемых архитектур
+    # if capability.endswith("+PTX") or num in ["80", "86", "89", "90a", "120"]:
+    #     NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
 
 ext_modules = []
 
-if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
-    qattn_extension = CUDAExtension(
-        name="sageattention._qattn_sm80",
-        sources=[
-            "csrc/qattn/pybind_sm80.cpp",
-            "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
-        ],
-        extra_compile_args={
-            "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
-        },
-    )
-    ext_modules.append(qattn_extension)
-
-if HAS_SM89 or HAS_SM120:
-    qattn_extension = CUDAExtension(
-        name="sageattention._qattn_sm89",
-        sources=[
-            "csrc/qattn/pybind_sm89.cpp",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn_inst_buf.cu",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_attn_inst_buf.cu",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn.cu",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_fuse_v_mean_attn.cu",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn.cu",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf.cu",
-            "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf.cu"
-            #"csrc/qattn/qk_int_sv_f8_cuda_sm89.cu",
-        ],
-        extra_compile_args={
-            "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
-        },
-    )
-    ext_modules.append(qattn_extension)
-
-if HAS_SM90:
-    qattn_extension = CUDAExtension(
-        name="sageattention._qattn_sm90",
-        sources=[
-            "csrc/qattn/pybind_sm90.cpp",
-            "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
-        ],
-        extra_compile_args={
-            "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
-        },
-        extra_link_args=['-lcuda'],
-    )
-    ext_modules.append(qattn_extension)
-
-# Fused kernels.
+# Fused kernels - работают на sm_75.
 fused_extension = CUDAExtension(
     name="sageattention._fused",
     sources=["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"],
@@ -172,6 +127,31 @@ fused_extension = CUDAExtension(
 )
 ext_modules.append(fused_extension)
 
+# Модуль _qattn_sm80 может частично работать на sm_75, пробуем включить
+# Если будут ошибки компиляции - закомментируйте этот блок
+if HAS_SM80: # Всегда True для 7.5 в нашей конфигурации
+    try:
+        qattn_extension = CUDAExtension(
+            name="sageattention._qattn_sm80",
+            sources=[
+                "csrc/qattn/pybind_sm80.cpp",
+                "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
+            ],
+            extra_compile_args={
+                "cxx": CXX_FLAGS,
+                "nvcc": NVCC_FLAGS,
+            },
+        )
+        ext_modules.append(qattn_extension)
+        print("Добавлен модуль _qattn_sm80 для архитектуры 7.5")
+    except Exception as e:
+        print(f"Не удалось добавить модуль _qattn_sm80: {e}")
+
+# Модули для более высоких архитектур отключены для sm_75
+# if HAS_SM89 or HAS_SM120:
+#     ...
+# if HAS_SM90:
+#     ...
 
 parallel = None
 if 'EXT_PARALLEL' in os.environ:
@@ -179,7 +159,6 @@ if 'EXT_PARALLEL' in os.environ:
         parallel = int(os.getenv('EXT_PARALLEL'))
     finally:
         pass
-
 
 # Prevent file conflicts when multiple extensions are compiled simultaneously
 class BuildExtensionSeparateDir(BuildExtension):
@@ -209,7 +188,6 @@ class BuildExtensionSeparateDir(BuildExtension):
         objects = super().build_extension(ext)
         return objects
 
-
 setup(
     name='sageattention', 
     version='2.2.0',  
@@ -218,7 +196,7 @@ setup(
     description='Accurate and efficient plug-and-play low-bit attention.',  
     long_description=open('README.md', encoding='utf-8').read(),  
     long_description_content_type='text/markdown', 
-    url='https://github.com/thu-ml/SageAttention  ', 
+    url='https://github.com/thu-ml/SageAttention', 
     packages=find_packages(),
     python_requires='>=3.9',
     ext_modules=ext_modules,
