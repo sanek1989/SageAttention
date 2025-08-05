@@ -57,7 +57,7 @@ if CUDA_HOME is None:
 def get_nvcc_cuda_version(cuda_dir: str) -> Version:
     """Get the CUDA version from nvcc.
 
-    Adapted from https://github.com/NVIDIA/apex/blob/8b7a1ff183741dd8f9b87e7bafd04cfde99cea28/setup.py
+    Adapted from https://github.com/NVIDIA/apex/blob/8b7a1ff183741dd8f9b87e7bafd04cfde99cea28/setup.py  
     """
     nvcc_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"],
                                           universal_newlines=True)
@@ -66,21 +66,12 @@ def get_nvcc_cuda_version(cuda_dir: str) -> Version:
     nvcc_cuda_version = parse(output[release_idx].split(",")[0])
     return nvcc_cuda_version
 
-# Iterate over all GPUs on the current machine. Also you can modify this part to specify the architecture if you want to build for specific GPU architectures.
-compute_capabilities = set()
-device_count = torch.cuda.device_count()
-for i in range(device_count):
-    major, minor = torch.cuda.get_device_capability(i)
-    if major < 8:
-        warnings.warn(f"skipping GPU {i} with compute capability {major}.{minor}")
-        continue
-    compute_capabilities.add(f"{major}.{minor}")
+# Принудительное указание архитектуры для Tesla T4
+print("Принудительно установлены compute capabilities: {'7.5'}")
+compute_capabilities = {"7.5"}
 
 nvcc_cuda_version = get_nvcc_cuda_version(CUDA_HOME)
-if not compute_capabilities:
-    raise RuntimeError("No GPUs found. Please specify the target GPU architectures or build on a machine with GPUs.")
-else:
-    print(f"Detect GPUs with compute capabilities: {compute_capabilities}")
+print(f"Detect GPUs with compute capabilities: {compute_capabilities}")
 
 # Validate the NVCC CUDA version.
 if nvcc_cuda_version < Version("12.0"):
@@ -112,6 +103,8 @@ for capability in compute_capabilities:
     elif capability.startswith("12.0"):
         HAS_SM120 = True
         num = "120" # need to use sm120a to use mxfp8/mxfp4/nvfp4 instructions.
+    else:  # Для архитектуры 7.5
+        num = "75"
     NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
     if capability.endswith("+PTX"):
         NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
@@ -225,7 +218,7 @@ setup(
     description='Accurate and efficient plug-and-play low-bit attention.',  
     long_description=open('README.md', encoding='utf-8').read(),  
     long_description_content_type='text/markdown', 
-    url='https://github.com/thu-ml/SageAttention', 
+    url='https://github.com/thu-ml/SageAttention  ', 
     packages=find_packages(),
     python_requires='>=3.9',
     ext_modules=ext_modules,
