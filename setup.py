@@ -97,7 +97,9 @@ if nvcc_cuda_version < Version("12.8") and any(cc.startswith("12.0") for cc in c
 
 # Add target compute capabilities to NVCC flags.
 for capability in compute_capabilities:
-    if capability.startswith("8.0"):
+    if capability.startswith("7.5"):
+        num = "75"
+    elif capability.startswith("8.0"):
         HAS_SM80 = True
         num = "80"
     elif capability.startswith("8.6"):
@@ -118,6 +120,21 @@ for capability in compute_capabilities:
 
 ext_modules = []
 
+if HAS_SM75:
+    qattn_extension = CUDAExtension(
+        name="sageattention._qattn_sm75",
+        sources=[
+            "csrc/qattn/pybind_sm75.cpp",
+            "csrc/qattn/qk_int_sv_f16_cuda_sm75.cu",
+        ],
+        include_dirs=torch.utils.cpp_extension.include_paths(),
+        extra_compile_args={
+            "cxx": CXX_FLAGS,
+            "nvcc": NVCC_FLAGS,
+        },
+    )
+    ext_modules.append(qattn_extension)
+
 if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm80",
@@ -125,6 +142,7 @@ if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
             "csrc/qattn/pybind_sm80.cpp",
             "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
         ],
+        include_dirs=torch.utils.cpp_extension.include_paths(),
         extra_compile_args={
             "cxx": CXX_FLAGS,
             "nvcc": NVCC_FLAGS,
@@ -138,18 +156,19 @@ if HAS_SM89 or HAS_SM120:
         sources=[
             "csrc/qattn/pybind_sm89.cpp",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn_inst_buf.cu",
+            "csrc/qattn/qk_int_sv_f8_cuda_sm89.cu",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_attn_inst_buf.cu",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn.cu",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_fuse_v_mean_attn.cu",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn.cu",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf.cu",
             "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf.cu"
-            #"csrc/qattn/qk_int_sv_f8_cuda_sm89.cu",
         ],
+        include_dirs=torch.utils.cpp_extension.include_paths(),
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
-        },
+            "nvcc": NVCC_FLAGS
+        }
     )
     ext_modules.append(qattn_extension)
 
@@ -160,6 +179,7 @@ if HAS_SM90:
             "csrc/qattn/pybind_sm90.cpp",
             "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
         ],
+        include_dirs=torch.utils.cpp_extension.include_paths(),
         extra_compile_args={
             "cxx": CXX_FLAGS,
             "nvcc": NVCC_FLAGS,
@@ -172,6 +192,7 @@ if HAS_SM90:
 fused_extension = CUDAExtension(
     name="sageattention._fused",
     sources=["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"],
+    include_dirs=torch.utils.cpp_extension.include_paths(),
     extra_compile_args={
         "cxx": CXX_FLAGS,
         "nvcc": NVCC_FLAGS,

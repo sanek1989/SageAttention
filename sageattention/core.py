@@ -49,6 +49,10 @@ from .quant import per_warp_int8 as per_warp_int8_cuda
 from .quant import sub_mean
 from .quant import per_channel_fp8
 
+# Register SM75 implementation
+if SM75_ENABLED:
+    from ._qattn_sm75 import qk_int8_sv_f16_accum_f32_attn_sm75
+
 from typing import Any, List, Literal, Optional, Tuple, Union
 import warnings
 
