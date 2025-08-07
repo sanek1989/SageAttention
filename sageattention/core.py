@@ -44,10 +44,18 @@ try:
 except:
     SM90_ENABLED = False
 
-from .quant import per_block_int8 as per_block_int8_cuda
-from .quant import per_warp_int8 as per_warp_int8_cuda
-from .quant import sub_mean
-from .quant import per_channel_fp8
+# Register SM75 implementation
+try:
+    from . import _qattn_sm75
+    SM75_ENABLED = True
+except:
+
+from .quant import (
+    per_block_int8 as per_block_int8_cuda,
+    per_warp_int8 as per_warp_int8_cuda,
+    sub_mean,
+    per_channel_fp8
+)
 
 # Register SM75 implementation
 if SM75_ENABLED:
