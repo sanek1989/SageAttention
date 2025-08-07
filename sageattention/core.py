@@ -29,19 +29,19 @@ from .triton.quant_per_thread import per_thread_int8 as per_thread_int8_triton
 try:
     from . import _qattn_sm80
     SM80_ENABLED = True
-except:
+except ImportError:
     SM80_ENABLED = False
 
 try:
     from . import _qattn_sm89
     SM89_ENABLED = True
-except:
+except ImportError:
     SM89_ENABLED = False
 
 try:
     from . import _qattn_sm90
     SM90_ENABLED = True
-except:
+except ImportError:
     SM90_ENABLED = False
 
 # Register SM75 implementation
@@ -67,7 +67,13 @@ import warnings
 
 import subprocess
 import re
-def get_cuda_version():
+def get_cuda_version() -> tuple[int, int] | tuple[None, None]:
+    """Получает версию CUDA через nvcc
+    
+    Returns:
+        tuple[int, int]: Мажорная и минорная версии CUDA
+        или (None, None) при ошибке
+    """
     try:
         output = subprocess.check_output(['nvcc', '--version']).decode()
         match = re.search(r'release (\d+)\.(\d+)', output)
